@@ -9,79 +9,162 @@
    # Implementation 1 Miller-Tucker-Zemlin
    function resolutionRapideDuTSP(C::Matrix{Int64})
    
-       #TODO
-       m::Model = Model(GLPK.Optimizer)
+        m::Model = Model(GLPK.Optimizer)
    
-       nbSite::Int64 = size(C, 1)
+        nbSite::Int64 = size(C, 1)
    
-       vectorSite::Vector{Int64} = collect(1:nbSite)
+        vectorSite::Vector{Int64} = collect(1:nbSite)
    
-       @variable(m, nbSite >= t[2:nbSite] >=0 , Int)
-       @variable(m, x[i = 1:nbSite, j = 1:nbSite], Bin)
-   
-       @objective(m, Min, sum(sum(x[i,j]*C[i,j] for i in 1:nbSite) for j in 1:nbSite))
-   
-       @constraint(m, contrA[i in 1:nbSite], sum(x[i,j] for j in deleteat!(copy(vectorSite), i)) == 1)
-   
-       @constraint(m, contrB[j in 1:nbSite], sum(x[i,j] for i in deleteat!(copy(vectorSite), j)) == 1)
+        @variable(m, nbSite >= t[2:nbSite] >=0 , Int)
+        @variable(m, x[i = 1:nbSite, j = 1:nbSite], Bin)
     
-       @constraint(m, contrC[i in 2:nbSite, j in 2:nbSite], t[i]-t[j] + nbSite*x[i,j] <= nbSite - 1) 
+        @objective(m, Min, sum(sum(x[i,j]*C[i,j] for i in 1:nbSite) for j in 1:nbSite))
    
-       optimize!(m)
+        @constraint(m, contrA[i in 1:nbSite], sum(x[i,j] for j in deleteat!(copy(vectorSite), i)) == 1)
    
-       # Affichage des résultats
-       status = termination_status(m)
+        @constraint(m, contrB[j in 1:nbSite], sum(x[i,j] for i in deleteat!(copy(vectorSite), j)) == 1)
+    
+        @constraint(m, contrC[i in 2:nbSite, j in 2:nbSite], t[i]-t[j] + nbSite*x[i,j] <= nbSite - 1) 
    
-       if status == MOI.OPTIMAL
+        optimize!(m)
+   
+        # Affichage des résultats
+        status = termination_status(m)
+   
+        if status == MOI.OPTIMAL
            println("Problème résolu à l'optimalité")
            println("z = ",objective_value(m)) # affichage de la valeur optimale
            println("x = ",value.(x))
-       elseif status == MOI.INFEASIBLE
+        elseif status == MOI.INFEASIBLE
            println("Problème impossible!")
-       elseif status == MOI.INFEASIBLE_OR_UNBOUNDED
+        elseif status == MOI.INFEASIBLE_OR_UNBOUNDED
            println("Problème non borné!")
-       end
+        end
+        return m
    end
    
    
    # Implementation 2 Dantzig-Fulkerson-Johnson
    
    # Modèle de problème d'affectation 
-   function resolutionPbAffectation(C::Matrix{Int64}, )
+    function resolutionPbAffectation(C::Matrix{Int64})
    
-       m::Model = Model(GLPK.Optimizer)
+        m::Model = Model(GLPK.Optimizer)
    
-       nbSite::Int64 = size(C,1)
-       vectorSite::Vector{Int64} = collect(1:nbSite)
+        nbSite::Int64 = size(C,1)
+        vectorSite::Vector{Int64} = collect(1:nbSite)
    
-       @variable(m, x[i = 1:nbSite, j = 1:nbSite], Bin)
-       @objective(m, Min, sum(sum(x[i,j]*C[i,j] for i in 1:nbSite) for j in 1:nbSite))
+        @variable(m, x[i = 1:nbSite, j = 1:nbSite], Bin)
+        @objective(m, Min, sum(sum(x[i,j]*C[i,j] for i in 1:nbSite) for j in 1:nbSite))
    
-       # contraintes de 1 et 2
-       @constraint(m, contrA[i in 1:nbSite], sum(x[i,j] for j in deleteat!(copy(vectorSite), i)) == 1)
-       @constraint(m, contrB[j in 1:nbSite], sum(x[i,j] for i in deleteat!(copy(vectorSite), j)) == 1)
+        # contraintes de 1 et 2
+        @constraint(m, contrA[i in 1:nbSite], sum(x[i,j] for j in deleteat!(copy(vectorSite), i)) == 1)
+        @constraint(m, contrB[j in 1:nbSite], sum(x[i,j] for i in deleteat!(copy(vectorSite), j)) == 1)
    
-       optimize!(m)
+        optimize!(m)
    
-       # return le vector de solution
-    
+        return m
    end
    
-   function resolutionMalineDuTSP(C::Matrix{Int64})
+    function resolutionMalineDuTSP(C::Matrix{Int64})
    
-       # resoudre le pb d'affectation 
+        model = resolutionPbAffectation(C)
+
+        X::Matrix{Float64} = value.(model[:x])
        
-       # recupérer les résultats => deduire le plus petit sous tour 
+        cycleMin::Vector{Tuple} = minCycle(x)# recupérer les résultats => deduire le plus petit sous tour 
        
-       # Tant que l'on a des sous tours :
+        while size(cycleMin,1) != size(C,1)# Tant que l'on a des sous tours :
        
-           # resoudre le pb d'affectation avec contrainte supplémentaire : casser le plus petit sous tour  ( xij + xji <= 1)   addconstraint ?
+            @constraint(model,sum(x[i,j] for (i,j) in cycleMin) <= 1)# resoudre le pb d'affectation avec contrainte supplémentaire : casser le plus petit sous tour  ( xij + xji <= 1)   addconstraint ?
+            model = resolutionMalineDuTSP(C)
+            X = value.(model[:x]) 
+            cycleMin = minCycle(X)
+
+        end# fin tant que 
    
-       # fin tant que 
+        # afficher résultats 
+        status = termination_status(model)
    
-       # afficher résultats 
-   
+        if status == MOI.OPTIMAL
+           println("Problème résolu à l'optimalité")
+           println("z = ",objective_value(model)) # affichage de la valeur optimale
+           println("x = ",value.(model[:x]))
+        elseif status == MOI.INFEASIBLE
+           println("Problème impossible!")
+        elseif status == MOI.INFEASIBLE_OR_UNBOUNDED
+           println("Problème non borné!")
+        end
            
+    end
+
+    function minCycle(X::Matrix{Float64})
+
+        A::Matrix{Tuple{Int64,Int64}} = [] # Matrice dans laquelle on stock les cycles
+        
+        #vecteur des indices i et j que l'on racoursira au fur et a mesure de la boucle 
+        height::Vector{Int64} = collect(1:size(x,1)) 
+        witdh::Vector{Int64}  = collect(1:size(x,2))
+        
+        #indice i et j qui sert a voyager dans X
+        i::Int64 = height[1]
+        j::Int64 = width[1] 
+        k::Int64 = 1 # k sert d'indice dans A
+        l::Int64 = 1 # l sert a traverser le tableau d'indice de j
+        cyclesuivant::Bool = false
+
+        #le but est de parcurir le moins de d'element possible normalement on est sur du n(n+1)/2
+        while !isempty(height)
+            while !isempty(width)
+                if X[i,j] == 1 
+                    #=
+                    #tant que on a pas fini de mettre dans le table le cycle 
+                    qu'on est en train de regarder on change pas de cycle
+                    =#
+                    if !cyclesuivant 
+                        push!(A[k],(i,j))
+                    else 
+                        k = k+1
+                        push!(A[k,(i,j)])
+                    end 
+                    #=
+                    On supprime les indices qu'on a déjà regarde car il ne peut y avoir qu'une seule
+                    variable a 1 sur ça ligne et ça colone 
+                    donc si on trouve une variable a 1 on a plus besion de regarde ni ça ligne ni ça colone 
+                    =#
+                    delete!(height,i)
+                    delete!(width,j)
+                    #=
+                    A la fin on fait un tour de boucle alors que les tableau d'indice sont vide 
+                    donc faut verifier que les tableau soit pas vide pour pas fait un segfault
+                    =#
+                    if !isempty(height) && !isempty(witdh)
+                        #=
+                        si j est dans witdh alors on a pas fini le cycle 
+                        =#
+                        if in(j,height) 
+                            i = j
+                        else 
+                            #=
+                            si on a fini le cycle on revient au début du tableau d'indice
+                            pour pouvoir trouver le début du prochain cycle
+                            =#
+                            i = height[1]
+                            cyclesuivant = true
+                        end 
+                        #=
+                        on revient ensuite au début des j pour pouvoir traverser toute la ligne 
+                        en sautant les colones que l'on a déjà visiter
+                        =#
+                        j = width[1]
+                        l = 1
+                    end
+                else 
+                    j = width[l+1]
+                end
+            end
+        end
+        return minSizeVec(A)
    end
    
    
