@@ -72,11 +72,11 @@
 
         X::Matrix{Float64} = value.(model[:x])
        
-        cycleMin::Vector{Tuple} = minCycle(x)# recupérer les résultats => deduire le plus petit sous tour 
+        cycleMin::Vector{Tuple} = minCycle(X)# recupérer les résultats => deduire le plus petit sous tour 
        
-        while size(cycleMin,1) != size(C,1)# Tant que l'on a des sous tours :
+        while size(cycleMin,1) != size(X,1)# Tant que l'on a des sous tours :
        
-            @constraint(model,sum(x[i,j] for (i,j) in cycleMin) <= 1)# resoudre le pb d'affectation avec contrainte supplémentaire : casser le plus petit sous tour  ( xij + xji <= 1)   addconstraint ?
+            @constraint(model,sum(model([:x])[i,j] for (i,j) in cycleMin) <= 1)# resoudre le pb d'affectation avec contrainte supplémentaire : casser le plus petit sous tour  ( xij + xji <= 1)   addconstraint ?
             model = resolutionMalineDuTSP(C)
             X = value.(model[:x]) 
             cycleMin = minCycle(X)
@@ -101,10 +101,11 @@
     function minCycle(X::Matrix{Float64})
 
         A::Matrix{Tuple{Int64,Int64}} = [] # Matrice dans laquelle on stock les cycles
+        min::Vector{Tuple{Int64,Int64}} 
         
         #vecteur des indices i et j que l'on racoursira au fur et a mesure de la boucle 
-        height::Vector{Int64} = collect(1:size(x,1)) 
-        witdh::Vector{Int64}  = collect(1:size(x,2))
+        height::Vector{Int64} = collect(1:size(X,1)) 
+        witdh::Vector{Int64}  = collect(1:size(X,2))
         
         #indice i et j qui sert a voyager dans X
         i::Int64 = height[1]
@@ -164,7 +165,13 @@
                 end
             end
         end
-        return minSizeVec(A)
+        min = A[1]
+        for i in 1:size(A,1)
+            if size(A[i],1) < size(min,1)
+                min = A[i]
+            end
+        end
+        return min
    end
    
    
